@@ -7,6 +7,11 @@ a:hover { color: #3b2d43; }
 :focus-visible { outline: 3px solid #6f5a9a; outline-offset: 4px; border-radius: 6px; }
 ::selection { background: #dcd2ee; }
 
+/* The phases illustration and copy animate between phases with inline transitions; skip them for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .phase-morph *, .phase-copy * { transition-duration: 0s !important; transition-delay: 0s !important; }
+}
+
 /* Hover/active/focus states. Elements carry their base styles inline, so these need !important. */
 .skip-link:focus { left: 12px !important; }
 .nav-link:hover { color: #3b2d43 !important; }

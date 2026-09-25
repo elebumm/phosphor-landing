@@ -1,5 +1,6 @@
 import React from 'react';
 import { css } from './css.js';
+import { morphPieces } from './phaseMorph.jsx';
 
 // Hero timeline: a 40-second, 30 fps sequence. Picture Edit lays the V1/A1 cuts over PIC_MS,
 // and the playhead in tickTimeline() moves at the same rate so it draws each clip as it passes.
@@ -472,7 +473,13 @@ export default class App extends React.Component {
       osNote: s.osKnown ? (mac ? 'Looks like you’re on a Mac.' : 'Looks like you’re on Windows.') : '',
 
       phaseNodes: PH.map((p, i) => ({ num: String(i + 1), name: p.name, bg: i === s.phase ? '#e7b86a' : i < s.phase ? '#7fb7a8' : '#fffdf8', fg: i <= s.phase ? '#3b2d43' : '#5b4d66' })),
-      phasePanels: PH.map((p, i) => ({ ...p, step: `Phase ${i + 1} of 5`, op: i === s.phase ? 1 : 0, tf: i === s.phase ? 'translateY(0)' : i < s.phase ? 'translateY(-20px)' : 'translateY(20px)', is0: i === 0, is1: i === 1, is2: i === 2, is3: i === 3, is4: i === 4 })),
+      // One illustration whose pieces move between phases; the number and heading roll, the copy slides.
+      phaseMorph: morphPieces(s.phase),
+      phaseNumTf: `translateY(-${(s.phase * 1.3).toFixed(2)}em)`,
+      phaseNameTf: `translateY(-${(s.phase * 1.15).toFixed(2)}em)`,
+      phaseCopy: PH.map((p, i) => i === s.phase
+        ? { ...p, op: 1, tf: 'none', pe: 'auto', tr: 'opacity .4s ease .2s,transform .6s cubic-bezier(.76,0,.24,1) .1s' }
+        : { ...p, op: 0, tf: `translateY(${i < s.phase ? -14 : 14}px)`, pe: 'none', tr: 'opacity .2s ease,transform .6s cubic-bezier(.76,0,.24,1)' }),
 
       mockScreen: pill.scr, pillBg: pill.bg, pillFg: pill.fg, pillText: pill.t,
       agentMsg: msgs[s.mStep],
@@ -818,68 +825,34 @@ export default class App extends React.Component {
               </ol>
             </div>
 
-            <div style={css(`display:grid`)}>
-              {v.phasePanels.map((pp, _pp) => (<React.Fragment key={_pp}>
-                <div style={css(`grid-area:1/1;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(20px,4vw,48px);align-items:center;opacity:${pp.op};transform:${pp.tf};transition:opacity .45s,transform .55s cubic-bezier(.2,.8,.2,1);pointer-events:none`)}>
-                  <div style={css(`position:relative;aspect-ratio:16/10;max-height:40vh;background:#fffdf8;border:2px solid #3b2d43;border-radius:18px;box-shadow:5px 5px 0 #3b2d43;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:6%`)}>
-                    {pp.is0 && (<>
-                      <div style={css(`display:flex;flex-direction:column;gap:14px;width:100%;max-width:360px`)}>
-                        <div style={css(`align-self:flex-start;padding:12px 16px;border:2px solid #3b2d43;border-radius:16px 16px 16px 4px;background:#dcd2ee;font-size:clamp(14px,1.6vw,17px);line-height:1.4`)}>A 40-second vertical short from today's recording.</div>
-                        <div style={css(`align-self:flex-end;display:flex;align-items:center;gap:10px;padding:10px 14px;border:2px solid #3b2d43;border-radius:16px 16px 4px 16px;background:#e7b86a;font:700 clamp(13px,1.4vw,15px) 'Baloo 2',sans-serif`)}><span style={css(`width:22px;height:22px;display:grid;place-items:center;border-radius:6px;background:#fffdf8;border:2px solid #3b2d43;font-size:13px`)}>?</span>Who's it for?</div>
-                      </div>
-                    </>)}
-                    {pp.is1 && (<>
-                      <div style={css(`display:flex;flex-direction:column;gap:16px;width:100%`)}>
-                        <div style={css(`display:flex;gap:8px;align-items:flex-end`)}>
-                          <span style={css(`flex:1;height:44px;border:2px solid #3b2d43;border-radius:6px;background:repeating-linear-gradient(135deg,#dcd2ee 0 6px,#fffdf8 6px 12px)`)}></span>
-                          <span style={css(`flex:1;height:60px;border:2px solid #3b2d43;border-radius:6px;background:repeating-linear-gradient(135deg,#dcd2ee 0 6px,#fffdf8 6px 12px)`)}></span>
-                          <span style={css(`flex:1;height:36px;border:2px solid #3b2d43;border-radius:6px;background:repeating-linear-gradient(135deg,#dcd2ee 0 6px,#fffdf8 6px 12px)`)}></span>
-                          <span style={css(`flex:1;height:52px;border:2px solid #3b2d43;border-radius:6px;background:repeating-linear-gradient(135deg,#dcd2ee 0 6px,#fffdf8 6px 12px)`)}></span>
-                        </div>
-                        <div style={css(`height:0;border-top:2px dashed #6f5a9a`)}></div>
-                        <div style={css(`display:flex;gap:8px`)}>
-                          <span style={css(`flex:1.2;padding:8px;border:2px solid #3b2d43;border-radius:8px;background:#b7a4d6;font:500 12px 'Fira Code',monospace`)}>open</span>
-                          <span style={css(`flex:2;padding:8px;border:2px solid #3b2d43;border-radius:8px;background:#7fb7a8;font:500 12px 'Fira Code',monospace`)}>middle</span>
-                          <span style={css(`flex:1;padding:8px;border:2px solid #3b2d43;border-radius:8px;background:#e7b86a;font:500 12px 'Fira Code',monospace`)}>close</span>
-                        </div>
-                      </div>
-                    </>)}
-                    {pp.is2 && (<>
-                      <div style={css(`position:relative;display:flex;flex-direction:column;gap:8px;width:100%`)}>
-                        <div style={css(`display:flex;gap:4px;height:28px`)}><span style={css(`flex:3;border:2px solid #3b2d43;border-radius:6px;background:#b7a4d6`)}></span><span style={css(`flex:2;border:2px solid #3b2d43;border-radius:6px;background:#b7a4d6`)}></span><span style={css(`flex:4;border:2px solid #3b2d43;border-radius:6px;background:#b7a4d6`)}></span></div>
-                        <div style={css(`display:flex;gap:4px;height:22px;padding-left:18%`)}><span style={css(`flex:1;border:2px solid #3b2d43;border-radius:6px;background:#e7b86a`)}></span><span style={css(`flex:2;visibility:hidden`)}></span><span style={css(`flex:1;border:2px solid #3b2d43;border-radius:6px;background:#e7b86a`)}></span></div>
-                        <div style={css(`height:22px;border:2px solid #3b2d43;border-radius:6px;background:repeating-linear-gradient(90deg,#7fb7a8 0 3px,#a8d0c5 3px 6px)`)}></div>
-                        <span style={css(`position:absolute;left:62%;top:-10px;bottom:-10px;width:3px;background:#a3405c`)}></span>
-                        <span style={css(`align-self:flex-start;margin-top:8px;padding:4px 10px;border:2px solid #3b2d43;border-radius:999px;background:#fffdf8;font:500 12px 'Fira Code',monospace`)}>v1 · playable</span>
-                      </div>
-                    </>)}
-                    {pp.is3 && (<>
-                      <div style={css(`display:flex;flex-direction:column;gap:12px;width:100%;max-width:340px`)}>
-                        <div style={css(`display:flex;align-items:center;gap:12px`)}><span style={css(`width:26px;height:26px;flex:none;display:grid;place-items:center;border:2px solid #3b2d43;border-radius:7px;background:#7fb7a8`)}><span style={css(`width:7px;height:13px;margin-top:-3px;border-right:3px solid #3b2d43;border-bottom:3px solid #3b2d43;transform:rotate(45deg)`)}></span></span><span style={css(`font:500 13px 'Fira Code',monospace`)}>picture</span><span style={css(`flex:1;height:8px;border-radius:4px;background:#dcd2ee`)}></span></div>
-                        <div style={css(`display:flex;align-items:center;gap:12px`)}><span style={css(`width:26px;height:26px;flex:none;display:grid;place-items:center;border:2px solid #3b2d43;border-radius:7px;background:#7fb7a8`)}><span style={css(`width:7px;height:13px;margin-top:-3px;border-right:3px solid #3b2d43;border-bottom:3px solid #3b2d43;transform:rotate(45deg)`)}></span></span><span style={css(`font:500 13px 'Fira Code',monospace`)}>sound</span><span style={css(`flex:1;height:8px;border-radius:4px;background:#dcd2ee`)}></span></div>
-                        <div style={css(`display:flex;align-items:center;gap:12px`)}><span style={css(`width:26px;height:26px;flex:none;display:grid;place-items:center;border:2px solid #3b2d43;border-radius:7px;background:#7fb7a8`)}><span style={css(`width:7px;height:13px;margin-top:-3px;border-right:3px solid #3b2d43;border-bottom:3px solid #3b2d43;transform:rotate(45deg)`)}></span></span><span style={css(`font:500 13px 'Fira Code',monospace`)}>export</span><span style={css(`flex:1;height:8px;border-radius:4px;background:#dcd2ee`)}></span></div>
-                      </div>
-                    </>)}
-                    {pp.is4 && (<>
-                      <div style={css(`display:flex;gap:18px;align-items:center;height:100%`)}>
-                        <div style={css(`height:100%;aspect-ratio:9/16;border:2px solid #3b2d43;border-radius:10px;background:repeating-linear-gradient(135deg,#dcd2ee 0 7px,#efe7d9 7px 14px);position:relative`)}>
-                          <span style={css(`position:absolute;left:10%;right:10%;bottom:8%;height:4px;background:#3b2d43;border-radius:2px`)}></span>
-                          <span style={css(`position:absolute;left:30%;bottom:calc(8% - 5px);width:14px;height:14px;border-radius:50%;background:#e7b86a;border:2px solid #3b2d43`)}></span>
-                        </div>
-                        <div style={css(`display:flex;flex-direction:column;gap:10px`)}>
-                          <div style={css(`padding:8px 12px;border:2px solid #3b2d43;border-radius:10px;background:#fffdf8;display:flex;gap:8px;align-items:center;font-size:14px`)}><span style={css(`font:500 12px 'Fira Code',monospace;color:#6f5a9a`)}>00:04</span>Tighter here</div>
-                          <div style={css(`padding:8px 12px;border:2px solid #3b2d43;border-radius:10px;background:#fffdf8;display:flex;gap:8px;align-items:center;font-size:14px`)}><span style={css(`font:500 12px 'Fira Code',monospace;color:#6f5a9a`)}>00:12</span>Love this bit</div>
-                        </div>
-                      </div>
-                    </>)}
-                  </div>
-                  <div style={css(`display:flex;flex-direction:column;gap:12px`)}>
-                    <span style={css(`font:500 14px 'Fira Code',monospace;color:#6f5a9a`)}>{pp.step}</span>
-                    <h3 style={css(`margin:0;font:800 clamp(36px,5vw,64px)/1 'Baloo 2',sans-serif;letter-spacing:-.02em`)}>{pp.name}</h3>
-                    <p style={css(`margin:0;font-size:clamp(18px,2vw,22px);line-height:1.45;color:#5b4d66;max-width:30ch;text-wrap:pretty`)}>{pp.line}</p>
+            <div style={css(`display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(20px,4vw,48px);align-items:center`)}>
+              <div aria-hidden="true" className="phase-morph" style={css(`position:relative;justify-self:center;width:min(100%,64vh);aspect-ratio:16/10;background:#fffdf8;border:2px solid #3b2d43;border-radius:18px;box-shadow:5px 5px 0 #3b2d43;overflow:hidden;container-type:inline-size`)}>
+                {v.phaseMorph.map(p => (
+                  <span key={p.id} style={css(p.style)}>
+                    {p.children}
+                    {p.layers.map((l, i) => <span key={i} style={css(l.style)}>{l.children}</span>)}
+                  </span>
+                ))}
+              </div>
+              <div className="phase-copy" style={css(`display:flex;flex-direction:column;gap:12px;min-width:0`)}>
+                <span aria-hidden="true" style={css(`display:flex;align-items:center;gap:.6ch;font:500 14px/1.3 'Fira Code',monospace;color:#6f5a9a`)}>
+                  Phase
+                  <span style={css(`display:inline-block;height:1.3em;overflow:hidden`)}>
+                    <span style={css(`display:block;transform:${v.phaseNumTf};transition:transform .6s cubic-bezier(.76,0,.24,1)`)}>
+                      {[1, 2, 3, 4, 5].map(n => <span key={n} style={css(`display:block;height:1.3em`)}>{n}</span>)}
+                    </span>
+                  </span>
+                  of 5
+                </span>
+                <div style={css(`height:1.15em;overflow:hidden;font:800 clamp(36px,5vw,64px)/1.15 'Baloo 2',sans-serif;letter-spacing:-.02em`)}>
+                  <div style={css(`transform:${v.phaseNameTf};transition:transform .7s cubic-bezier(.76,0,.24,1)`)}>
+                    {v.phaseCopy.map(p => <h3 key={p.name} style={css(`margin:0;height:1.15em;font:inherit;letter-spacing:inherit`)}>{p.name}</h3>)}
                   </div>
                 </div>
-              </React.Fragment>))}
+                <div style={css(`display:grid`)}>
+                  {v.phaseCopy.map(p => <p key={p.name} style={css(`grid-area:1/1;margin:0;font-size:clamp(18px,2vw,22px);line-height:1.45;color:#5b4d66;max-width:30ch;text-wrap:pretty;opacity:${p.op};transform:${p.tf};pointer-events:${p.pe};transition:${p.tr}`)}>{p.line}</p>)}
+                </div>
+              </div>
             </div>
           </div>
         </div>
