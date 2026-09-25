@@ -22,7 +22,15 @@ npm run preview   # serves dist/ locally
 
 ## Deploy
 
-Pushing to `main` runs `.github/workflows/pages.yml`, which builds the site and publishes `dist/` to GitHub Pages. The build uses relative asset paths, so it also works on a custom domain.
+Pushing to `main` runs `.github/workflows/pages.yml`, which builds the site and publishes `dist/` to GitHub Pages at [phosphorai.app](https://phosphorai.app).
+
+The custom domain is set in the repo's Pages settings, with "Enforce HTTPS" on. DNS for `phosphorai.app` is managed in Cloudflare:
+
+- apex A records to GitHub Pages: `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
+- apex AAAA records: `2606:50c0:8000::153` through `2606:50c0:8003::153`
+- `www` CNAME to `elebumm.github.io` (GitHub redirects it to the apex)
+
+All records are DNS-only (grey cloud). GitHub issues and renews the HTTPS certificate itself, and turning on the Cloudflare proxy can block those renewals.
 
 ## Layout
 
