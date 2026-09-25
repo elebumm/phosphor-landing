@@ -52,7 +52,9 @@ When the page loads, it asks the GitHub API for the latest published release of 
 | Mac (Intel, when Chrome or Edge reports an Intel Mac, and as the "Intel Mac?" link) | `Phosphor-X.Y.Z-mac-x64.dmg` |
 | Windows | `Phosphor-X.Y.Z-win-x64-setup.exe` |
 
-Until a release is published, the API answers 404 and the buttons read "coming soon" and link to the repository, where visitors can watch for releases. If GitHub can't be reached, and in the prerendered HTML, the buttons link to the Releases page. Drafts and pre-releases are ignored, as they are by the app's update check. Phones and tablets get a note that Phosphor runs on Mac and Windows, plus a button to share or copy the link. The Windows button says "beta" until Windows installs have been tested.
+Until a release is published, the API answers 404 and the buttons read "coming soon" and link to the repository, where visitors can watch for releases. If GitHub can't be reached, and in the prerendered HTML, the buttons link to the Releases page. Drafts and pre-releases are ignored. Phones and tablets get a note that Phosphor runs on Mac and Windows, plus a button to share or copy the link.
+
+Updating is currently a re-download, and the page says so under the Get started buttons and in the FAQ. Change both if the app starts installing updates itself.
 
 ## Example short
 

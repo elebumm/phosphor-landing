@@ -47,8 +47,8 @@ const FAQ = [
   { q: 'Which editing apps does it work with?', a: 'DaVinci Resolve and After Effects. Premiere support is on the way.' },
   { q: 'Do I need Codex or Claude Code?', a: 'Yes, one of them. Phosphor’s agent runs through the Codex or Claude Code command-line tool, signed in with your own account. The first time you open Phosphor, it checks for the tool and tells you if it’s missing.' },
   { q: 'Does my footage leave my computer?', a: 'Your footage and projects stay on your computer. The agent works through your own Codex or Claude Code sign-in, so anything it sends to the AI model is covered by that account. Phosphor never asks for your passwords.' },
-  { q: 'What computer do I need?', a: 'A Mac with macOS 13 or later (Apple silicon or Intel), or a 64-bit Windows PC. Windows support is in beta. You also need Python 3.11 or newer and FFmpeg, plus free space of about three times your footage and another 2 GB.' },
-  { q: 'How do updates work?', a: 'Phosphor checks for new versions on its own. Depending on your computer, it either installs the update when you quit or shows you a link to download it.' }
+  { q: 'What computer do I need?', a: 'A Mac with macOS 13 or later (Apple silicon or Intel), or a 64-bit Windows PC. You also need Python 3.11 or newer and FFmpeg, plus free space of about three times your footage and another 2 GB.' },
+  { q: 'How do updates work?', a: 'For now, updating is a re-download: get the newest version from this page and install it the same way as the first time.' }
 ];
 
 export default class App extends React.Component {
@@ -494,8 +494,8 @@ export default class App extends React.Component {
         : macMain ? { href: macMain.url, title: 'Download for Mac', sub: `${macKind(macMain)} · ${mb(macMain.size)}` }
         : { href: RELEASES_PAGE, title: 'Download for Mac', sub: 'macOS 13 or later' },
       win: soon ? { href: RELEASES_REPO, title: 'Windows: coming soon', sub: 'Get notified on GitHub' }
-        : rel && rel.win ? { href: rel.win.url, title: 'Download for Windows', sub: `64-bit · beta · ${mb(rel.win.size)}` }
-        : { href: RELEASES_PAGE, title: 'Download for Windows', sub: '64-bit · beta' },
+        : rel && rel.win ? { href: rel.win.url, title: 'Download for Windows', sub: `64-bit · ${mb(rel.win.size)}` }
+        : { href: RELEASES_PAGE, title: 'Download for Windows', sub: '64-bit Windows' },
       macOther: macOther ? { href: macOther.url, label: `${macKind(macOther)} Mac? Get that version` } : null
     };
     const version = rel && rel.version ? ` Version ${rel.version}.` : '';
@@ -1316,7 +1316,7 @@ export default class App extends React.Component {
             </div>
             <div data-reveal="80">{this.downloads(v)}</div>
             <div data-reveal="140" style={css(`display:flex;align-items:center;gap:10px;font:500 14px 'Fira Code',monospace;color:#2f6b5e`)}>
-              <span style={css(`width:10px;height:10px;border-radius:50%;background:#7fb7a8;border:2px solid #3b2d43`)}></span>Checks for updates on its own
+              <span style={css(`width:10px;height:10px;border-radius:50%;background:#7fb7a8;border:2px solid #3b2d43`)}></span>To update, download the newest version here
             </div>
             <details data-reveal="180" className="first-launch" style={css(`max-width:54ch;font-size:15px;line-height:1.5;color:#5b4d66`)}>
               <summary style={css(`cursor:pointer;font:700 16px 'Baloo 2',sans-serif;color:#3b2d43`)}>Seeing a security warning the first time you open it?</summary>
