@@ -1,6 +1,40 @@
 import React from 'react';
 import { css } from './css.js';
 
+// Hero timeline: a 40-second, 30 fps sequence. Picture Edit lays the V1/A1 cuts over PIC_MS,
+// and the playhead in tickTimeline() moves at the same rate so it draws each clip as it passes.
+const TL_SECONDS = 40, TL_FPS = 30, PIC_MS = 1500;
+
+// Seeded waveform bars as one SVG path (viewBox 0 0 n 10). Integer LCG, so the server
+// render and the browser produce identical markup.
+function wave(seed, n, lo, hi) {
+  let x = (seed * 7919) % 233280, d = '';
+  for (let i = 0; i < n; i++) {
+    x = (x * 9301 + 49297) % 233280;
+    const h = Math.round((lo + (hi - lo) * x / 233280) * 10) / 10;
+    d += `M${i + .2} ${(5 - h / 2).toFixed(2)}h.6v${h}h-.6z`;
+  }
+  return d;
+}
+
+const SHOTS = {
+  a: { bg: 'repeating-linear-gradient(90deg,transparent 0 17px,rgba(59,45,67,.1) 17px 18.5px),#dcd2ee', thumb: 'repeating-linear-gradient(135deg,#c6b7df 0 4px,#b7a4d6 4px 8px)' },
+  b: { bg: 'repeating-linear-gradient(90deg,transparent 0 17px,rgba(59,45,67,.1) 17px 18.5px),#cde5dd', thumb: 'repeating-linear-gradient(45deg,#a8d0c5 0 4px,#7fb7a8 4px 8px)' }
+};
+// V1 cuts (percent of the sequence), alternating the two camera angles. The cuts at 20% and 75% land on the story markers.
+const CUTS = [[0, 11, 'a'], [11, 20, 'b'], [20, 38, 'a'], [38, 56, 'b'], [56, 75, 'a'], [75, 88, 'b'], [88, 100, 'a']].map(([l, r, shot], i) => {
+  const n = Math.max(5, Math.round((r - l) * .9));
+  return { l, r, left: l + '%', width: r - l + '%', ...SHOTS[shot], n, wave: wave(i + 1, n, 1, 9) };
+});
+const MUSIC = { n: 90, wave: wave(11, 90, 3.5, 8) };
+const MARKS = [{ left: '0%', c: '#b7a4d6' }, { left: '20%', c: '#7fb7a8' }, { left: '75%', c: '#e7b86a' }];
+const TITLES = [{ left: '2%', width: '29%', label: 'MY NEW DESK', bg: '#e7b86a' }, { left: '36%', width: '24%', label: 'day one', bg: '#efe7d9' }];
+const RULER = ['00:00', '00:10', '00:20', '00:30'];
+// Where each crew step's beam lands: null is the preview, anything else a timeline lane.
+const BEAM_LANES = [null, null, ['ruler'], ['v1'], ['v2'], ['a1', 'a2'], [null, 'ruler'], null];
+// Idle drift for the hero's floating squares: [x px, y px, degrees].
+const DRIFT = [[5, -7, 12], [-6, 5, -14], [4, 6, 10], [-5, -6, -12], [6, 4, 16], [-4, -5, -10]];
+
 export default class App extends React.Component {
   state = { os: 'mac', osKnown: false, phase: 0, mStep: 4, clips: 10, notes: 3, answered: true, controlOn: false, handed: false, spread: false, hover: false, ticks: 4, narrow: false };
   rootRef = React.createRef(); logoRef = React.createRef(); heroRef = React.createRef(); glowRef = React.createRef();
@@ -8,7 +42,7 @@ export default class App extends React.Component {
   mockRef = React.createRef(); burstRef = React.createRef(); tcRef = React.createRef(); tlRef = React.createRef(); playheadRef = React.createRef();
   controlRef = React.createRef(); knobRef = React.createRef(); cursorRef = React.createRef(); stopRef = React.createRef();
   deckRef = React.createRef(); localRef = React.createRef(); miniEyesRef = React.createRef(); shackleRef = React.createRef(); checkRef = React.createRef();
-  stageRef = React.createRef(); videoRef = React.createRef();
+  stageRef = React.createRef(); videoRef = React.createRef(); tlHeadRef = React.createRef(); tlCheckRef = React.createRef(); tlTcRef = React.createRef();
   timers = []; mockTimers = []; crewTimers = []; observers = []; anims = []; heroAnims = [];
 
   componentDidMount() {
@@ -39,6 +73,16 @@ export default class App extends React.Component {
       { transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.4)', opacity: 1, offset: .12 }, { transform: 'scale(1)', opacity: .6, offset: .35 }, { transform: 'scale(1)', opacity: 1 }
     ], { duration: 2400, delay: (i % 4) * 280, iterations: Infinity }));
     root.querySelectorAll('[data-float]').forEach((el, i) => anim(el, [{ transform: 'translateY(0)' }, { transform: 'translateY(-8px)' }, { transform: 'translateY(0)' }], { duration: 3200 + i * 500, iterations: Infinity, easing: 'ease-in-out' }));
+    // The squares' wrappers carry the scroll parallax; the drift goes on the square itself so the two don't fight.
+    root.querySelectorAll('[data-drift]').forEach((el, i) => {
+      const [x, y, r] = DRIFT[i % DRIFT.length], e = 'ease-in-out';
+      anim(el, [
+        { transform: 'translate(0,0) rotate(0deg)', easing: e },
+        { transform: `translate(${x}px,${y}px) rotate(${r}deg)`, easing: e },
+        { transform: `translate(${-x * .6}px,${y * .4}px) rotate(${-r * .5}deg)`, easing: e },
+        { transform: 'translate(0,0) rotate(0deg)' }
+      ], { duration: 5200 + i * 700, delay: -i * 900, iterations: Infinity });
+    });
     root.querySelectorAll('[data-mockanim]').forEach(el => {
       const k = el.getAttribute('data-mockanim');
       const kf = k === 'a' ? [{ transform: 'translate(0,0) scale(1)' }, { transform: 'translate(40%,20%) scale(.8)' }, { transform: 'translate(10%,45%) scale(1.1)' }, { transform: 'translate(0,0) scale(1)' }]
@@ -84,7 +128,7 @@ export default class App extends React.Component {
     q('bar').forEach((el, i) => A(el, [{ transform: 'scaleY(.25)' }, { transform: `scaleY(${.5 + (i * 7 % 5) / 10})` }, { transform: 'scaleY(.3)' }, { transform: `scaleY(${.7 + (i * 3 % 4) / 12})` }, { transform: 'scaleY(.25)' }], { duration: 900 + (i % 5) * 140, iterations: Infinity, easing: 'ease-in-out' }));
     q('scan').forEach(el => { const h = el.parentElement.offsetHeight || 440; A(el, [{ transform: 'translateY(0)' }, { transform: `translateY(${h}px)` }], { duration: 1100, iterations: Infinity, easing: 'ease-in-out', direction: 'alternate' }); });
     q('ring').forEach(el => A(el, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 1400, iterations: Infinity, easing: 'ease-in-out' }));
-    q('progress').forEach(el => A(el, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 3400, iterations: Infinity }));
+    q('progress').forEach(el => { this.progressAnim = A(el, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 3400, iterations: Infinity }); });
     stage.querySelectorAll('[data-crew-av]').forEach((el, i) => A(el, [{ transform: 'translateY(0)' }, { transform: 'translateY(-2px)' }, { transform: 'translateY(0)' }], { duration: 1800 + i * 230, iterations: Infinity, easing: 'ease-in-out', composite: 'add' }));
     this.runCrew();
   }
@@ -100,13 +144,17 @@ export default class App extends React.Component {
       { duration: big ? 750 : 450, easing: 'ease-out', composite: 'add' });
   }
 
-  beam(id, color) {
+  beam(id, color, lanes) {
     const stage = this.stageRef.current, v = this.videoRef.current; if (!stage || !v) return;
     const av = stage.querySelector(`[data-crew-av="${id}"]`); if (!av) return;
-    const sr = stage.getBoundingClientRect(), ar = av.getBoundingClientRect(), vr = v.getBoundingClientRect();
+    const sr = stage.getBoundingClientRect(), ar = av.getBoundingClientRect();
     const p0 = { x: ar.left - sr.left + ar.width / 2, y: ar.top - sr.top + ar.height / 2 };
     for (let i = 0; i < 4; i++) {
-      const p1 = { x: vr.left - sr.left + vr.width * (.3 + Math.random() * .4), y: vr.top - sr.top + vr.height * (.25 + Math.random() * .5) };
+      const lane = lanes && lanes[i % lanes.length];
+      const target = (lane && stage.querySelector(`[data-lane="${lane}"]`)) || v, tr = target.getBoundingClientRect();
+      const p1 = target === v
+        ? { x: tr.left - sr.left + tr.width * (.3 + Math.random() * .4), y: tr.top - sr.top + tr.height * (.25 + Math.random() * .5) }
+        : { x: tr.left - sr.left + tr.width * (.08 + Math.random() * .84), y: tr.top - sr.top + tr.height * (.3 + Math.random() * .4) };
       const t = document.createElement('span'), sz = 7 + Math.random() * 4;
       t.style.cssText = `position:absolute;left:${-sz / 2}px;top:${-sz / 2}px;width:${sz}px;height:${sz}px;background:${color};border:1.5px solid #3b2d43;box-shadow:0 0 10px ${color};pointer-events:none;z-index:5`;
       stage.appendChild(t);
@@ -122,11 +170,15 @@ export default class App extends React.Component {
     const at = (ms, fn) => this.crewTimers.push(setTimeout(fn, ms));
     const ORDER = ['director', 'research', 'story', 'picture', 'graphics', 'sound', 'qc', 'director'];
     const COL = ['#b7a4d6', '#e7b86a', '#b7a4d6', '#7fb7a8', '#e7b86a', '#7fb7a8', '#7fb7a8', '#e7b86a'];
+    // crewK/crewAt mirror crewStep synchronously for the rAF playhead; React applies the state a tick later.
+    this.crewK = -1; this.crewAt = performance.now();
     this.setState({ crewStep: -1 });
     ORDER.forEach((r, i) => at(500 + i * 1900, () => {
+      this.crewK = i; this.crewAt = performance.now();
+      if (i === 7 && this.progressAnim) this.progressAnim.currentTime = 0;
       this.setState({ crewStep: i });
       this.hopAv(r, i === 7);
-      this.beam(r, COL[i]);
+      this.beam(r, COL[i], BEAM_LANES[i]);
       if (i === 7) this.crewBurst();
     }));
     at(500 + 7 * 1900 + 3800, () => this.runCrew());
@@ -184,6 +236,7 @@ export default class App extends React.Component {
     if (hr.bottom >= 0) {
       this.gx += (this.mx - hr.left - this.gx) * .08; this.gy += (this.my - hr.top - this.gy) * .08;
       if (this.glowRef.current) this.glowRef.current.style.transform = `translate3d(${this.gx - 320}px,${this.gy - 320}px,0)`;
+      this.tickTimeline(performance.now());
     }
     const tl = this.tlRef.current, ph = this.playheadRef.current;
     if (this.mockVisible && tl && ph) {
@@ -191,6 +244,34 @@ export default class App extends React.Component {
       ph.style.transform = `translate3d(${(t / 32) * tl.offsetWidth}px,0,0)`;
       const sec = Math.floor(t);
       if (sec !== this.lastSec && this.tcRef.current) { this.lastSec = sec; this.tcRef.current.textContent = `00:${String(sec).padStart(2, '0')} / 00:32`; }
+    }
+  }
+
+  // Playhead, QC check bar and timecode for the hero timeline, following the crew step:
+  // Picture Edit draws the cuts, Graphics parks on the title, Sound scrubs, QC sweeps and checks, Ready plays.
+  tickTimeline(now) {
+    const k = this.crewK, head = this.tlHeadRef.current;
+    if (k == null || !head) return;
+    if (k !== this.tlStep) { this.tlStep = k; this.tlFrom = this.tlPos || 0; }
+    const t = now - this.crewAt;
+    const clamp = x => Math.min(1, Math.max(0, x)), smooth = x => x * x * (3 - 2 * x);
+    const path = k === 3 ? x => clamp(x / PIC_MS)
+      : k === 4 ? () => .02
+      : k === 5 ? x => .02 + .44 * smooth(clamp(x / 1700))
+      : k === 6 ? x => smooth(clamp(x / 1700))
+      : k === 7 ? x => (x % 3400) / 3400
+      : () => 0;
+    // Glide from wherever the previous step left the playhead onto this step's path.
+    const pos = path(t) + (this.tlFrom - path(0)) * (1 - smooth(clamp(t / 350)));
+    this.tlPos = pos;
+    head.style.transform = `translateX(${(pos * 100).toFixed(2)}%)`;
+    const check = k === 6 ? path(t) : k === 7 || k === -1 ? 1 : 0;
+    if (check !== this.tlCheck && this.tlCheckRef.current) { this.tlCheck = check; this.tlCheckRef.current.style.transform = `scaleX(${check.toFixed(4)})`; }
+    const frames = Math.round(pos * TL_SECONDS * TL_FPS);
+    if (frames !== this.tlFrames && this.tlTcRef.current) {
+      this.tlFrames = frames;
+      const pad = n => String(n).padStart(2, '0');
+      this.tlTcRef.current.textContent = `00:00:${pad(Math.floor(frames / TL_FPS))}:${pad(frames % TL_FPS)}`;
     }
   }
 
@@ -215,7 +296,10 @@ export default class App extends React.Component {
     if (!this.reduced && this.heroRef.current) {
       const top = this.heroRef.current.getBoundingClientRect().top;
       if (top > -window.innerHeight) this.heroRef.current.querySelectorAll('[data-parallax]').forEach(el => {
-        el.style.transform = `translate3d(0,${(top * parseFloat(el.getAttribute('data-parallax'))).toFixed(1)}px,0)`;
+        // data-parallax-max keeps the stage inside the hero's bottom padding so the timeline isn't clipped.
+        const max = parseFloat(el.getAttribute('data-parallax-max')) || Infinity;
+        const y = Math.max(-max, Math.min(max, top * parseFloat(el.getAttribute('data-parallax'))));
+        el.style.transform = `translate3d(0,${y.toFixed(1)}px,0)`;
       });
     }
   }
@@ -342,9 +426,26 @@ export default class App extends React.Component {
       assets: on(k === 1), assetsTf: on(k === 1, 'translateY(0) scale(1)', 'translateY(20px) scale(.4)'),
       story: on(k === 2), foot: on(k >= 3), footTf: on(k >= 3, 'scale(1)', 'scale(1.12)'),
       gfx: on(k >= 4), gfxTf: on(k >= 4, 'rotate(-4deg) scale(1)', 'rotate(-14deg) scale(.3)'), lowerTf: on(k >= 4, 'translateX(0)', 'translateX(-110%)'),
-      snd: on(k >= 5), qc: on(k === 6), badge: on(k >= 6), badgeText: k >= 7 ? '✓ checked' : 'checking…', badgeBg: k >= 7 ? '#7fb7a8' : '#fffdf8', ready: on(k >= 7),
-      tStory: on(k >= 2), tStoryTf: on(k >= 2, 'scaleX(1)', 'scaleX(0)'), tPic: on(k >= 3), tPicTf: on(k >= 3, 'scaleX(1)', 'scaleX(0)'),
-      tGfx: on(k >= 4), tGfxTf: on(k >= 4, 'scaleX(1)', 'scaleX(0)'), tSnd: on(k >= 5), tSndTf: on(k >= 5, 'scaleX(1)', 'scaleX(0)')
+      snd: on(k >= 5), qc: on(k === 6), badge: on(k >= 6), badgeText: k >= 7 ? '✓ checked' : 'checking…', badgeBg: k >= 7 ? '#7fb7a8' : '#fffdf8', ready: on(k >= 7)
+    };
+
+    // Timeline clips. Hiding fades first, then resets the clip/scale once invisible.
+    const reveal = (show, delay, dur, ease) => show
+      ? { op: 1, clip: 'inset(0 0 0 0)', tr: `opacity .15s ease ${delay}ms,clip-path ${dur}ms ${ease} ${delay}ms` }
+      : { op: 0, clip: 'inset(0 100% 0 0)', tr: 'opacity .3s ease,clip-path 0s linear .3s' };
+    const pop = (show, delay) => show
+      ? { op: 1, tf: 'scale(1)', tr: `opacity .2s ease ${delay}ms,transform .5s cubic-bezier(.2,1.5,.4,1) ${delay}ms` }
+      : { op: 0, tf: 'scale(.4)', tr: 'opacity .3s ease,transform 0s linear .3s' };
+    const cut = c => ({ ...c, ...reveal(k >= 3, c.l * PIC_MS / 100, (c.r - c.l) * PIC_MS / 100, 'linear') });
+    const playing = s.crewStep != null && k >= 6;
+    const tl = {
+      marks: MARKS.map((m, i) => ({ ...m, ...pop(k >= 2, i * 220) })),
+      v2: TITLES.map((c, i) => ({ ...c, ...pop(k >= 4, i * 260) })),
+      v1: CUTS.map(cut), a1: CUTS.map(cut),
+      a2: { ...MUSIC, ...reveal(k >= 5, 0, 800, 'cubic-bezier(.3,.7,.3,1)') },
+      checkOp: k >= 3 ? 1 : 0,
+      playOp: playing ? 0 : 1, pauseOp: playing ? 1 : 0,
+      specDisp: s.narrow ? 'none' : 'inline'
     };
 
     return {
@@ -353,7 +454,7 @@ export default class App extends React.Component {
       mockRef: this.mockRef, burstRef: this.burstRef, tcRef: this.tcRef, tlRef: this.tlRef, playheadRef: this.playheadRef,
       controlRef: this.controlRef, knobRef: this.knobRef, cursorRef: this.cursorRef, stopRef: this.stopRef,
       deckRef: this.deckRef, localRef: this.localRef, miniEyesRef: this.miniEyesRef, shackleRef: this.shackleRef, checkRef: this.checkRef,
-      stageRef: this.stageRef, videoRef: this.videoRef,
+      stageRef: this.stageRef, videoRef: this.videoRef, tlHeadRef: this.tlHeadRef, tlCheckRef: this.tlCheckRef, tlTcRef: this.tlTcRef, tl,
 
       wide: !s.narrow, narrow: s.narrow,
       cv, cr, hv,
@@ -435,12 +536,12 @@ export default class App extends React.Component {
       <section ref={v.heroRef} aria-labelledby="hero-title" style={css(`position:relative;overflow:hidden;border-bottom:2px solid #3b2d43;background:radial-gradient(circle at 1px 1px, rgba(59,45,67,.09) 1px, transparent 1.5px) 0 0/22px 22px, #f4efe6`)}>
         <div ref={v.glowRef} aria-hidden="true" style={css(`position:absolute;left:0;top:0;width:640px;height:640px;border-radius:50%;background:radial-gradient(closest-side, rgba(183,164,214,.55), rgba(183,164,214,.18) 55%, transparent);pointer-events:none;will-change:transform;transform:translate3d(55vw,80px,0)`)}></div>
         <div aria-hidden="true" style={css(`position:absolute;inset:0;pointer-events:none`)}>
-          <span data-parallax="0.25" style={css(`position:absolute;left:6%;top:18%;width:14px;height:14px;background:#b7a4d6;border:2px solid #3b2d43`)}></span>
-          <span data-parallax="0.45" style={css(`position:absolute;left:44%;top:9%;width:10px;height:10px;background:#7fb7a8;border:2px solid #3b2d43`)}></span>
-          <span data-parallax="0.15" style={css(`position:absolute;left:52%;bottom:14%;width:18px;height:18px;background:#e7b86a;border:2px solid #3b2d43`)}></span>
-          <span data-parallax="0.35" style={css(`position:absolute;right:5%;top:12%;width:12px;height:12px;background:#a3405c;border:2px solid #3b2d43`)}></span>
-          <span data-parallax="0.3" style={css(`position:absolute;right:9%;bottom:10%;width:10px;height:10px;background:#b7a4d6;border:2px solid #3b2d43`)}></span>
-          <span data-parallax="0.5" style={css(`position:absolute;left:3%;bottom:20%;width:8px;height:8px;background:#7fb7a8;border:2px solid #3b2d43`)}></span>
+          <span data-parallax="0.25" style={css(`position:absolute;left:6%;top:18%`)}><span data-drift="" style={css(`display:block;width:14px;height:14px;background:#b7a4d6;border:2px solid #3b2d43`)}></span></span>
+          <span data-parallax="0.45" style={css(`position:absolute;left:44%;top:9%`)}><span data-drift="" style={css(`display:block;width:10px;height:10px;background:#7fb7a8;border:2px solid #3b2d43`)}></span></span>
+          <span data-parallax="0.15" style={css(`position:absolute;left:52%;bottom:14%`)}><span data-drift="" style={css(`display:block;width:18px;height:18px;background:#e7b86a;border:2px solid #3b2d43`)}></span></span>
+          <span data-parallax="0.35" style={css(`position:absolute;right:5%;top:12%`)}><span data-drift="" style={css(`display:block;width:12px;height:12px;background:#a3405c;border:2px solid #3b2d43`)}></span></span>
+          <span data-parallax="0.3" style={css(`position:absolute;right:9%;bottom:10%`)}><span data-drift="" style={css(`display:block;width:10px;height:10px;background:#b7a4d6;border:2px solid #3b2d43`)}></span></span>
+          <span data-parallax="0.5" style={css(`position:absolute;left:3%;bottom:20%`)}><span data-drift="" style={css(`display:block;width:8px;height:8px;background:#7fb7a8;border:2px solid #3b2d43`)}></span></span>
         </div>
         <div style={css(`position:relative;max-width:1180px;margin:0 auto;padding:clamp(48px,8vw,96px) 24px clamp(56px,8vw,104px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:clamp(40px,6vw,72px);align-items:center`)}>
           <div style={css(`display:flex;flex-direction:column;gap:24px;min-width:0`)}>
@@ -464,7 +565,7 @@ export default class App extends React.Component {
             <p data-reveal="320" style={css(`margin:0;font-size:14px;line-height:1.55;color:#5b4d66;max-width:56ch;padding-top:14px;border-top:2px dashed #b7a4d6`)}>macOS 13 or later (Apple silicon or Intel), or 64-bit Windows. You also need Python 3.11+, FFmpeg, and the Codex or Claude Code CLI. The app checks for these and tells you what's missing.</p>
           </div>
 
-          <div data-parallax="-0.08" style={css(`display:flex;flex-direction:column;align-items:center;gap:28px;min-width:0`)}>
+          <div data-parallax="-0.08" data-parallax-max="48" style={css(`display:flex;flex-direction:column;align-items:center;gap:28px;min-width:0`)}>
 
 
             <div ref={v.stageRef} aria-hidden="true" style={css(`position:relative;width:100%;max-width:580px;display:grid;grid-template-columns:${v.crewGrid};gap:22px;align-items:center`)}>
@@ -590,7 +691,7 @@ export default class App extends React.Component {
                 </div>
               </div>
               <div style={css(`display:flex;flex-direction:column;align-items:center;gap:14px;min-width:0`)}>
-                <div ref={v.videoRef} style={css(`position:relative;width:min(250px,64vw);aspect-ratio:9/16;border-radius:18px;overflow:hidden;background:#3b2d43;border:3px solid #3b2d43;box-shadow:${v.hv.glow};transition:box-shadow .5s`)}>
+                <div ref={v.videoRef} style={css(`position:relative;width:min(250px,64vw,100%);aspect-ratio:9/16;border-radius:18px;overflow:hidden;background:#3b2d43;border:3px solid #3b2d43;box-shadow:${v.hv.glow};transition:box-shadow .5s`)}>
                   <span style={css(`position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(183,164,214,.25),transparent 70%)`)}></span>
                   <span style={css(`position:absolute;left:0;right:0;top:46%;text-align:center;font:500 12px 'Fira Code',monospace;color:#b7a4d6;opacity:${v.hv.empty};transition:opacity .3s`)}>no cut yet</span>
                   <div style={css(`position:absolute;inset:0;opacity:${v.hv.foot};transform:${v.hv.footTf};transition:opacity .5s,transform .8s cubic-bezier(.2,.8,.2,1)`)}>
@@ -617,13 +718,69 @@ export default class App extends React.Component {
                   <span style={css(`position:absolute;right:7%;top:3%;padding:3px 8px;border:2px solid #3b2d43;border-radius:7px;background:${v.hv.badgeBg};font:500 11px 'Fira Code',monospace;color:#3b2d43;opacity:${v.hv.badge};transition:opacity .3s,background .3s`)}>{v.hv.badgeText}</span>
                   <div style={css(`position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,253,248,.3);opacity:${v.hv.ready};transition:opacity .3s`)}><span data-v="progress" style={css(`position:absolute;inset:0;background:#e7b86a;transform-origin:0 50%;transform:scaleX(0)`)}></span></div>
                 </div>
-                <div style={css(`width:min(250px,64vw);padding:8px 10px;border:2px solid #3b2d43;border-radius:10px;background:#fffdf8;display:grid;grid-template-columns:44px minmax(0,1fr);gap:5px 8px;align-items:center`)}>
-                  <span style={css(`font:500 10px 'Fira Code',monospace;color:#5b4d66`)}>story</span><div style={css(`position:relative;height:12px`)}><span style={css(`position:absolute;top:0;bottom:0;left:0%;width:28%;border:1.5px solid #3b2d43;border-radius:4px;background:#b7a4d6;transform-origin:0 50%;opacity:${v.hv.tStory};transform:${v.hv.tStoryTf};transition:opacity .25s 0ms,transform .45s cubic-bezier(.2,1.3,.4,1) 0ms`)}></span><span style={css(`position:absolute;top:0;bottom:0;left:29%;width:44%;border:1.5px solid #3b2d43;border-radius:4px;background:#7fb7a8;transform-origin:0 50%;opacity:${v.hv.tStory};transform:${v.hv.tStoryTf};transition:opacity .25s 120ms,transform .45s cubic-bezier(.2,1.3,.4,1) 120ms`)}></span><span style={css(`position:absolute;top:0;bottom:0;left:74%;width:26%;border:1.5px solid #3b2d43;border-radius:4px;background:#e7b86a;transform-origin:0 50%;opacity:${v.hv.tStory};transform:${v.hv.tStoryTf};transition:opacity .25s 240ms,transform .45s cubic-bezier(.2,1.3,.4,1) 240ms`)}></span></div>
-                  <span style={css(`font:500 10px 'Fira Code',monospace;color:#5b4d66`)}>picture</span><div style={css(`position:relative;height:12px`)}><span style={css(`position:absolute;top:0;bottom:0;left:0%;width:20%;border:1.5px solid #3b2d43;border-radius:4px;background:#b7a4d6;transform-origin:0 50%;opacity:${v.hv.tPic};transform:${v.hv.tPicTf};transition:opacity .25s 0ms,transform .45s cubic-bezier(.2,1.3,.4,1) 0ms`)}></span><span style={css(`position:absolute;top:0;bottom:0;left:21%;width:16%;border:1.5px solid #3b2d43;border-radius:4px;background:#b7a4d6;transform-origin:0 50%;opacity:${v.hv.tPic};transform:${v.hv.tPicTf};transition:opacity .25s 90ms,transform .45s cubic-bezier(.2,1.3,.4,1) 90ms`)}></span><span style={css(`position:absolute;top:0;bottom:0;left:38%;width:24%;border:1.5px solid #3b2d43;border-radius:4px;background:#b7a4d6;transform-origin:0 50%;opacity:${v.hv.tPic};transform:${v.hv.tPicTf};transition:opacity .25s 180ms,transform .45s cubic-bezier(.2,1.3,.4,1) 180ms`)}></span><span style={css(`position:absolute;top:0;bottom:0;left:63%;width:17%;border:1.5px solid #3b2d43;border-radius:4px;background:#b7a4d6;transform-origin:0 50%;opacity:${v.hv.tPic};transform:${v.hv.tPicTf};transition:opacity .25s 270ms,transform .45s cubic-bezier(.2,1.3,.4,1) 270ms`)}></span><span style={css(`position:absolute;top:0;bottom:0;left:81%;width:19%;border:1.5px solid #3b2d43;border-radius:4px;background:#b7a4d6;transform-origin:0 50%;opacity:${v.hv.tPic};transform:${v.hv.tPicTf};transition:opacity .25s 360ms,transform .45s cubic-bezier(.2,1.3,.4,1) 360ms`)}></span></div>
-                  <span style={css(`font:500 10px 'Fira Code',monospace;color:#5b4d66`)}>gfx</span><div style={css(`position:relative;height:12px`)}><span style={css(`position:absolute;top:0;bottom:0;left:4%;width:22%;border:1.5px solid #3b2d43;border-radius:4px;background:#e7b86a;transform-origin:0 50%;opacity:${v.hv.tGfx};transform:${v.hv.tGfxTf};transition:opacity .25s 0ms,transform .45s cubic-bezier(.2,1.3,.4,1) 0ms`)}></span><span style={css(`position:absolute;top:0;bottom:0;left:58%;width:20%;border:1.5px solid #3b2d43;border-radius:4px;background:#e7b86a;transform-origin:0 50%;opacity:${v.hv.tGfx};transform:${v.hv.tGfxTf};transition:opacity .25s 150ms,transform .45s cubic-bezier(.2,1.3,.4,1) 150ms`)}></span></div>
-                  <span style={css(`font:500 10px 'Fira Code',monospace;color:#5b4d66`)}>sound</span><div style={css(`position:relative;height:12px`)}><span style={css(`position:absolute;top:0;bottom:0;left:0%;width:100%;border:1.5px solid #3b2d43;border-radius:4px;background:repeating-linear-gradient(90deg,#7fb7a8 0 3px,#a8d0c5 3px 6px);transform-origin:0 50%;opacity:${v.hv.tSnd};transform:${v.hv.tSndTf};transition:opacity .25s 0ms,transform .45s cubic-bezier(.2,1.3,.4,1) 0ms`)}></span></div>
-                </div>
                 <div style={css(`display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 10px;background:#fffdf8;border:2px solid #3b2d43;border-radius:999px;box-shadow:2px 2px 0 #3b2d43;font:700 15px 'Baloo 2',sans-serif;max-width:100%`)}><span style={css(`width:12px;height:12px;flex:none;border-radius:50%;border:2px solid #3b2d43;background:${v.crewDot};transition:background .4s`)}></span><span style={css(`overflow:hidden;text-overflow:ellipsis;white-space:nowrap`)}>{v.crewCaption}</span></div>
+              </div>
+              <div style={css(`grid-column:1/-1;position:relative;min-width:0;background:#fffdf8;border:2px solid #3b2d43;border-radius:14px;box-shadow:4px 4px 0 #3b2d43;overflow:hidden`)}>
+                <div style={css(`display:flex;align-items:center;gap:10px;padding:7px 10px 7px 12px;background:#efe7d9;border-bottom:2px solid #3b2d43;min-width:0`)}>
+                  <span style={css(`display:grid;gap:2px;flex:none`)}><span style={css(`width:11px;height:3px;margin-left:4px;border-radius:2px;background:#e7b86a;box-shadow:0 0 0 1px #3b2d43`)}></span><span style={css(`width:15px;height:3px;border-radius:2px;background:#b7a4d6;box-shadow:0 0 0 1px #3b2d43`)}></span><span style={css(`width:9px;height:3px;margin-left:2px;border-radius:2px;background:#7fb7a8;box-shadow:0 0 0 1px #3b2d43`)}></span></span>
+                  <span style={css(`flex:none;font:800 15px/1 'Baloo 2',sans-serif;padding-top:2px`)}>Timeline</span>
+                  <span style={css(`min-width:0;font:500 11px/1 'Fira Code',monospace;color:#5b4d66;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`)}>desk-setup-short</span>
+                  <span style={css(`margin-left:auto;flex:none;display:flex;align-items:center;gap:9px`)}>
+                    <span style={css(`display:${v.tl.specDisp};font:500 10px/1 'Fira Code',monospace;color:#5b4d66;white-space:nowrap`)}>9:16 · 30 fps</span>
+                    <span style={css(`position:relative;width:10px;height:10px`)}>
+                      <span style={css(`position:absolute;left:1px;top:0;border-left:9px solid #3b2d43;border-top:5px solid transparent;border-bottom:5px solid transparent;opacity:${v.tl.playOp};transition:opacity .2s`)}></span>
+                      <span style={css(`position:absolute;inset:0;display:flex;justify-content:space-between;padding:0 1px;opacity:${v.tl.pauseOp};transition:opacity .2s`)}><span style={css(`width:3px;border-radius:1px;background:#3b2d43`)}></span><span style={css(`width:3px;border-radius:1px;background:#3b2d43`)}></span></span>
+                    </span>
+                    <span ref={v.tlTcRef} style={css(`padding:4px 7px 3px;border-radius:6px;background:#3b2d43;color:#e7b86a;font:500 11px/1 'Fira Code',monospace;letter-spacing:.02em`)}>00:00:24:24</span>
+                  </span>
+                </div>
+                <div style={css(`position:relative;display:grid;grid-template-columns:44px minmax(0,1fr)`)}>
+                  <span style={css(`background:#efe7d9;border-right:2px solid #3b2d43;border-bottom:1.5px solid #3b2d43`)}></span>
+                  <div data-lane="ruler" style={css(`position:relative;height:26px;background:#f7f2ea;border-bottom:1.5px solid #3b2d43;overflow:hidden`)}>
+                    <span style={css(`position:absolute;left:0;right:0;bottom:3px;height:4px;background:repeating-linear-gradient(90deg,rgba(59,45,67,.3) 0 1px,transparent 1px 2.5%)`)}></span>
+                    <span style={css(`position:absolute;left:0;right:0;bottom:3px;height:8px;background:repeating-linear-gradient(90deg,rgba(59,45,67,.45) 0 1px,transparent 1px 12.5%)`)}></span>
+                    {RULER.map((t, i) => <span key={t} style={css(`position:absolute;left:${i * 25}%;top:0;bottom:3px;padding:4px 0 0 4px;border-left:1px solid rgba(59,45,67,.55);font:500 9px/1 'Fira Code',monospace;color:#5b4d66`)}>{t}</span>)}
+                    {v.tl.marks.map((m, i) => <svg key={i} width="10" height="11" viewBox="0 0 10 11" style={css(`position:absolute;left:${m.left};top:11px;overflow:visible;transform-origin:50% 100%;opacity:${m.op};transform:${m.tf};transition:${m.tr}`)}><path d="M1 1h8v5.5L5 10 1 6.5z" fill={m.c} stroke="#3b2d43" strokeWidth="1.3" strokeLinejoin="round"></path></svg>)}
+                    <span style={css(`position:absolute;left:0;right:0;bottom:0;height:3px;background:#e7b86a;opacity:${v.tl.checkOp};transition:opacity .3s`)}><span ref={v.tlCheckRef} style={css(`position:absolute;inset:0;background:#7fb7a8;transform-origin:0 50%;transform:scaleX(1)`)}></span></span>
+                  </div>
+                  <span style={css(`display:flex;align-items:center;justify-content:space-between;gap:4px;padding:0 6px 0 8px;background:#efe7d9;border-right:2px solid #3b2d43;border-bottom:1px solid rgba(59,45,67,.14);font:500 10px/1 'Fira Code',monospace;color:#3b2d43`)}>V2<svg width="11" height="8" viewBox="0 0 11 8" aria-hidden="true"><path d="M.8 4Q5.5-1.8 10.2 4Q5.5 9.8.8 4Z" fill="none" stroke="#5b4d66" strokeWidth="1.2"></path><circle cx="5.5" cy="4" r="1.6" fill="#5b4d66"></circle></svg></span>
+                  <div data-lane="v2" style={css(`position:relative;height:24px;border-bottom:1px solid rgba(59,45,67,.14)`)}>
+                    {v.tl.v2.map((c, i) => <span key={i} style={css(`position:absolute;top:3px;bottom:3px;left:${c.left};width:${c.width};border:1.5px solid #3b2d43;border-radius:4px;overflow:hidden;padding:0 5px;background:${c.bg};font:800 9px/15px 'Baloo 2',sans-serif;letter-spacing:.02em;white-space:nowrap;text-overflow:ellipsis;opacity:${c.op};transform:${c.tf};transition:${c.tr}`)}>{c.label}</span>)}
+                  </div>
+                  <span style={css(`display:flex;align-items:center;justify-content:space-between;gap:4px;padding:0 6px 0 8px;background:#efe7d9;border-right:2px solid #3b2d43;border-bottom:1px solid rgba(59,45,67,.14);font:500 10px/1 'Fira Code',monospace;color:#3b2d43`)}>V1<svg width="11" height="8" viewBox="0 0 11 8" aria-hidden="true"><path d="M.8 4Q5.5-1.8 10.2 4Q5.5 9.8.8 4Z" fill="none" stroke="#5b4d66" strokeWidth="1.2"></path><circle cx="5.5" cy="4" r="1.6" fill="#5b4d66"></circle></svg></span>
+                  <div data-lane="v1" style={css(`position:relative;height:32px;border-bottom:1px solid rgba(59,45,67,.14)`)}>
+                    {v.tl.v1.map((c, i) => (
+                      <span key={i} style={css(`position:absolute;top:3px;bottom:3px;left:${c.left};width:${c.width};border:1.5px solid #3b2d43;border-radius:4px;overflow:hidden;background:${c.bg};opacity:${c.op};clip-path:${c.clip};transition:${c.tr}`)}>
+                        <span style={css(`position:absolute;left:0;top:0;bottom:0;width:20px;background:${c.thumb};border-right:1.5px solid #3b2d43`)}>
+                          <span style={css(`position:absolute;left:3px;bottom:-2px;width:13px;height:9px;border-radius:5px 5px 2px 2px;background:#6f5a9a;border:1.5px solid #3b2d43`)}></span>
+                          <span style={css(`position:absolute;left:5px;top:3px;width:8px;height:8px;border-radius:50%;background:#efe7d9;border:1.5px solid #3b2d43`)}></span>
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  <span style={css(`display:flex;align-items:center;justify-content:space-between;gap:4px;padding:0 6px 0 8px;background:#efe7d9;border-right:2px solid #3b2d43;border-bottom:1px solid rgba(59,45,67,.14);font:500 10px/1 'Fira Code',monospace;color:#3b2d43`)}>A1<svg width="11" height="9" viewBox="0 0 11 9" aria-hidden="true"><path d="M1 3h2.2L6 1v7L3.2 6H1z" fill="#5b4d66"></path><path d="M8 2.6q1.6 1.9 0 3.8" fill="none" stroke="#5b4d66" strokeWidth="1.2" strokeLinecap="round"></path></svg></span>
+                  <div data-lane="a1" style={css(`position:relative;height:24px;border-bottom:1px solid rgba(59,45,67,.14)`)}>
+                    {v.tl.a1.map((c, i) => (
+                      <span key={i} style={css(`position:absolute;top:3px;bottom:3px;left:${c.left};width:${c.width};border:1.5px solid #3b2d43;border-radius:4px;overflow:hidden;background:#7fb7a8;opacity:${c.op};clip-path:${c.clip};transition:${c.tr}`)}>
+                        <svg viewBox={`0 0 ${c.n} 10`} preserveAspectRatio="none" style={css(`position:absolute;left:0;top:1px;width:100%;height:calc(100% - 2px)`)}><path d={c.wave} fill="#2f6b5e"></path></svg>
+                      </span>
+                    ))}
+                  </div>
+                  <span style={css(`display:flex;align-items:center;justify-content:space-between;gap:4px;padding:0 6px 0 8px;background:#efe7d9;border-right:2px solid #3b2d43;font:500 10px/1 'Fira Code',monospace;color:#3b2d43`)}>A2<svg width="11" height="9" viewBox="0 0 11 9" aria-hidden="true"><path d="M1 3h2.2L6 1v7L3.2 6H1z" fill="#5b4d66"></path><path d="M8 2.6q1.6 1.9 0 3.8" fill="none" stroke="#5b4d66" strokeWidth="1.2" strokeLinecap="round"></path></svg></span>
+                  <div data-lane="a2" style={css(`position:relative;height:24px`)}>
+                    <span style={css(`position:absolute;top:3px;bottom:3px;left:0;width:100%;border:1.5px solid #3b2d43;border-radius:4px;overflow:hidden;background:#a8d0c5;opacity:${v.tl.a2.op};clip-path:${v.tl.a2.clip};transition:${v.tl.a2.tr}`)}>
+                      <svg viewBox={`0 0 ${v.tl.a2.n} 10`} preserveAspectRatio="none" style={css(`position:absolute;left:0;top:1px;width:100%;height:calc(100% - 2px)`)}><path d={v.tl.a2.wave} fill="#2f6b5e" opacity=".55"></path></svg>
+                      <span style={css(`position:absolute;left:0;top:0;bottom:0;width:8%;background:linear-gradient(to bottom right,rgba(59,45,67,.3) 50%,transparent 50%)`)}></span>
+                      <span style={css(`position:absolute;right:0;top:0;bottom:0;width:8%;background:linear-gradient(to bottom left,rgba(59,45,67,.3) 50%,transparent 50%)`)}></span>
+                    </span>
+                  </div>
+                  <div style={css(`position:absolute;top:0;bottom:0;left:44px;right:0;pointer-events:none;z-index:2`)}>
+                    <div ref={v.tlHeadRef} style={css(`position:absolute;inset:0;transform:translateX(62%)`)}>
+                      <span style={css(`position:absolute;left:-1px;top:0;bottom:0;width:2px;background:#a3405c`)}></span>
+                      <svg width="12" height="14" viewBox="0 0 12 14" style={css(`position:absolute;left:-6px;top:0`)}><path d="M1 1h10v7.5L6 13 1 8.5z" fill="#a3405c" stroke="#3b2d43" strokeWidth="1.4" strokeLinejoin="round"></path></svg>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
