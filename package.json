@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && vite build --ssr src/entry-server.jsx --outDir dist-ssr && node scripts/prerender.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "og": "node scripts/render-og.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

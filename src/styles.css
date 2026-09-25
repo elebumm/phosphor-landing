@@ -20,3 +20,16 @@ a:hover { color: #3b2d43; }
 .btn-stop:hover { transform: translate(-2px, -2px) !important; box-shadow: 7px 7px 0 #3b2d43 !important; }
 .btn-stop:active { transform: translate(3px, 3px) !important; box-shadow: 2px 2px 0 #3b2d43 !important; }
 .footer-link:hover { color: #fffdf8 !important; }
+.btn-ex:hover { transform: translate(-2px, -2px) !important; box-shadow: 6px 6px 0 #fffdf8 !important; }
+.ex-play:focus-visible { opacity: 1 !important; pointer-events: auto !important; }
+
+/* Five nav links need more room than the old four; below this width the page keeps just the logo and Download. */
+@media (max-width: 899px) { .nav-links { display: none !important; } }
+
+/* FAQ and first-launch disclosures */
+.faq > summary, .first-launch > summary { list-style: none; }
+.faq > summary::-webkit-details-marker, .first-launch > summary::-webkit-details-marker { display: none; }
+.faq-icon { transition: transform .25s ease; }
+.faq[open] .faq-icon { transform: rotate(45deg); }
+.first-launch > summary { text-decoration: underline dotted #6f5a9a; text-underline-offset: 4px; }
+.first-launch[open] > summary { text-decoration: none; }

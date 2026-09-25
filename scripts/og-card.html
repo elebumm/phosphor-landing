@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<!-- Source for public/og.png, the 1200×630 link-preview image. Regenerate with `npm run og`. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Baloo+2:wght@800&family=Fira+Code:wght@500&display=block">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  * { box-sizing: border-box; }
+  body {
+    position: relative; color: #3b2d43; font-family: 'Atkinson Hyperlegible', sans-serif;
+    background: radial-gradient(circle at 1px 1px, rgba(59,45,67,.1) 1px, transparent 1.5px) 0 0/24px 24px, #f4efe6;
+  }
+  .glow { position: absolute; right: -40px; top: -80px; width: 720px; height: 720px; border-radius: 50%; background: radial-gradient(closest-side, rgba(183,164,214,.6), rgba(183,164,214,.18) 55%, transparent); }
+  .copy { position: absolute; left: 72px; top: 70px; width: 660px; display: flex; flex-direction: column; gap: 30px; }
+  .brand { display: flex; align-items: center; gap: 18px; font: 800 46px/1 'Baloo 2', sans-serif; letter-spacing: -.02em; }
+  .logo { display: grid; grid-template-columns: repeat(12, 6px); grid-auto-rows: 6px; }
+  h1 { margin: 0; font: 800 80px/.95 'Baloo 2', sans-serif; letter-spacing: -.03em; }
+  .sub { display: flex; align-items: center; gap: 12px; font: 500 22px/1 'Fira Code', monospace; color: #5b4d66; }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 12px; height: 12px; border-radius: 3px; border: 2px solid #3b2d43; }
+  .phone { position: absolute; right: 118px; top: 50px; width: 297px; height: 528px; border-radius: 26px; border: 4px solid #3b2d43; overflow: hidden; background: #3b2d43; box-shadow: 0 0 0 5px #fffdf8, 12px 12px 0 5px #3b2d43; }
+  .phone img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .made { position: absolute; right: 300px; bottom: 44px; padding: 10px 18px; border: 3px solid #3b2d43; border-radius: 14px; background: #e7b86a; box-shadow: 4px 4px 0 #3b2d43; font: 800 24px/1 'Baloo 2', sans-serif; transform: rotate(-4deg); }
+  .sq { position: absolute; border: 2px solid #3b2d43; }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <span class="sq" style="left:560px;top:40px;width:14px;height:14px;background:#7fb7a8;transform:rotate(12deg)"></span>
+  <span class="sq" style="left:590px;top:470px;width:20px;height:20px;background:#e7b86a;transform:rotate(-10deg)"></span>
+  <span class="sq" style="right:48px;top:90px;width:14px;height:14px;background:#a3405c;transform:rotate(18deg)"></span>
+  <span class="sq" style="right:60px;bottom:120px;width:12px;height:12px;background:#b7a4d6"></span>
+  <span class="sq" style="left:40px;bottom:60px;width:10px;height:10px;background:#7fb7a8"></span>
+
+  <div class="copy">
+    <div class="brand"><span class="logo" id="logo"></span>Phosphor</div>
+    <h1>Your AI editing crew, on your own computer.</h1>
+    <div class="sub"><span class="dots"><i style="background:#b7a4d6"></i><i style="background:#7fb7a8"></i><i style="background:#e7b86a"></i><i style="background:#a3405c"></i></span>Desktop app for macOS &amp; Windows</div>
+  </div>
+
+  <div class="phone"><img src="../public/media/sloppenheimer-poster.jpg" alt=""></div>
+  <div class="made">Made with Phosphor</div>
+
+  <script>
+    // Same pixel monitor as the site's logo: dark frame and eyes, lavender screen.
+    const logo = document.getElementById('logo');
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 12; c++) {
+      const px = document.createElement('span');
+      const dark = r < 2 || r > 6 || c < 2 || c > 9 || (r === 4 && (c === 4 || c === 7));
+      px.style.background = dark ? '#3b2d43' : '#b7a4d6';
+      logo.appendChild(px);
+    }
+  </script>
+</body>
+</html>

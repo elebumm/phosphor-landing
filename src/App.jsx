@@ -36,21 +36,44 @@ const BEAM_LANES = [null, null, ['ruler'], ['v1'], ['v2'], ['a1', 'a2'], [null, 
 // Idle drift for the hero's floating squares: [x px, y px, degrees].
 const DRIFT = [[5, -7, 12], [-6, 5, -14], [4, 6, 10], [-5, -6, -12], [6, 4, 16], [-4, -5, -10]];
 
+// Installers come from the newest published release of the public feed; see loadRelease().
+const RELEASES_REPO = 'https://github.com/elebumm/phosphor-releases';
+const RELEASES_PAGE = RELEASES_REPO + '/releases/latest';
+const RELEASE_API = 'https://api.github.com/repos/elebumm/phosphor-releases/releases/latest';
+const SITE_URL = 'https://phosphorai.app/';
+
+const FAQ = [
+  { q: 'What does it cost?', a: 'Phosphor is a free download. The AI work runs through your own Codex or Claude Code account, so it uses that plan rather than a separate subscription.' },
+  { q: 'Which editing apps does it work with?', a: 'DaVinci Resolve and After Effects. Premiere support is on the way.' },
+  { q: 'Do I need Codex or Claude Code?', a: 'Yes, one of them. Phosphor’s agent runs through the Codex or Claude Code command-line tool, signed in with your own account. The first time you open Phosphor, it checks for the tool and tells you if it’s missing.' },
+  { q: 'Does my footage leave my computer?', a: 'Your footage and projects stay on your computer. The agent works through your own Codex or Claude Code sign-in, so anything it sends to the AI model is covered by that account. Phosphor never asks for your passwords.' },
+  { q: 'What computer do I need?', a: 'A Mac with macOS 13 or later (Apple silicon or Intel), or a 64-bit Windows PC. Windows support is in beta. You also need Python 3.11 or newer and FFmpeg, plus free space of about three times your footage and another 2 GB.' },
+  { q: 'How do updates work?', a: 'Phosphor checks for new versions on its own. Depending on your computer, it either installs the update when you quit or shows you a link to download it.' }
+];
+
 export default class App extends React.Component {
-  state = { os: 'mac', osKnown: false, phase: 0, mStep: 4, clips: 10, notes: 3, answered: true, controlOn: false, handed: false, spread: false, hover: false, ticks: 4, narrow: false };
+  state = { os: 'mac', osKnown: false, arch: null, rel: null, copied: false, exPlaying: false, exMuted: true, phase: 0, mStep: 4, clips: 10, notes: 3, answered: true, controlOn: false, handed: false, spread: false, hover: false, ticks: 4, narrow: false };
   rootRef = React.createRef(); logoRef = React.createRef(); heroRef = React.createRef(); glowRef = React.createRef();
   phasesRef = React.createRef(); lineRef = React.createRef(); fillRef = React.createRef(); beadRef = React.createRef();
   mockRef = React.createRef(); burstRef = React.createRef(); tcRef = React.createRef(); tlRef = React.createRef(); playheadRef = React.createRef();
   controlRef = React.createRef(); knobRef = React.createRef(); cursorRef = React.createRef(); stopRef = React.createRef();
   deckRef = React.createRef(); localRef = React.createRef(); miniEyesRef = React.createRef(); shackleRef = React.createRef(); checkRef = React.createRef();
   stageRef = React.createRef(); videoRef = React.createRef(); tlHeadRef = React.createRef(); tlCheckRef = React.createRef(); tlTcRef = React.createRef();
+  exVideoRef = React.createRef(); exBarRef = React.createRef();
   timers = []; mockTimers = []; crewTimers = []; observers = []; anims = []; heroAnims = [];
 
   componentDidMount() {
     const reduced = this.reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const ua = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || '').toLowerCase();
-    const os = /win/.test(ua) ? 'windows' : /mac|iphone|ipad/.test(ua) ? 'mac' : null;
+    // Phones and tablets can't install Phosphor. iPadOS reports itself as a Mac, so touch support tells them apart.
+    const uad = navigator.userAgentData, ua = navigator.userAgent || '';
+    const plat = ((uad && uad.platform) || navigator.platform || '').toLowerCase();
+    const mobile = (uad && uad.mobile) || /iphone|ipad|ipod|android/i.test(ua) || (plat === 'macintel' && navigator.maxTouchPoints > 1);
+    const os = mobile ? 'mobile' : /win/.test(plat) ? 'windows' : /mac/.test(plat) ? 'mac' : plat ? 'other' : null;
     this.setState({ os: os || 'mac', osKnown: !!os, narrow: window.innerWidth < 760, ...(reduced ? {} : { mStep: 0, clips: 0, notes: 0, answered: false, ticks: 0 }) });
+    // Chromium can say whether a Mac is Apple silicon ("arm") or Intel ("x86"); other browsers get the Apple silicon build first.
+    if (os === 'mac' && uad && uad.getHighEntropyValues) uad.getHighEntropyValues(['architecture']).then(h => this.setState({ arch: h.architecture || null })).catch(() => {});
+    this.loadRelease();
+    this.setupExample(reduced);
     this.onResize = () => { const n = window.innerWidth < 760; if (n !== this.state.narrow) this.setState({ narrow: n }); this.scheduleScroll(); };
     window.addEventListener('resize', this.onResize);
 
@@ -116,6 +139,96 @@ export default class App extends React.Component {
     if (this.shackleRef.current) this.shackleRef.current.style.transform = 'translateY(-16px)';
     this.observe(this.localRef.current, .4, vis => { if (vis && !this.locked) { this.locked = true; anim(this.shackleRef.current, [{ transform: 'translateY(-16px)' }, { transform: 'translateY(3px)', offset: .6 }, { transform: 'translateY(0)' }], { duration: 600, delay: 350, easing: 'ease-in', fill: 'forwards' }); } });
     this.observe(this.controlRef.current, .4, vis => { if (vis && !this.nudged) { this.nudged = true; anim(this.knobRef.current, [{ transform: 'translateX(0)' }, { transform: 'translateX(9px)', offset: .2 }, { transform: 'translateX(0)', offset: .4 }, { transform: 'translateX(9px)', offset: .6 }, { transform: 'translateX(0)', offset: .8 }], { duration: 900, delay: 500 }); } });
+  }
+
+  // The newest published release decides what the download buttons do: direct installer links once one
+  // exists, "coming soon" before the first release, and the Releases page if GitHub can't be reached.
+  loadRelease() {
+    fetch(RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } })
+      .then(r => (r.status === 404 ? null : r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(data => {
+        if (!data) return this.setState({ rel: 'none' });
+        const pick = re => { const a = (data.assets || []).find(x => re.test(x.name)); return a ? { url: a.browser_download_url, size: a.size } : null; };
+        const rel = { version: String(data.tag_name || '').replace(/^v/, ''), mac: pick(/-mac-arm64\.dmg$/), macIntel: pick(/-mac-x64\.dmg$/), win: pick(/-win-x64-setup\.exe$/) };
+        if (rel.mac || rel.macIntel || rel.win) this.setState({ rel });
+      })
+      .catch(() => {});
+  }
+
+  // The example short plays muted while it's on screen, like a GIF; its buttons add sound and pause it.
+  setupExample(reduced) {
+    const video = this.exVideoRef.current;
+    if (!video) return;
+    video.muted = true;
+    const sync = () => this.setState({ exPlaying: !video.paused, exMuted: video.muted });
+    ['play', 'pause', 'volumechange'].forEach(e => video.addEventListener(e, sync));
+    video.addEventListener('timeupdate', () => {
+      const bar = this.exBarRef.current;
+      if (bar && video.duration) bar.style.transform = `scaleX(${(video.currentTime / video.duration).toFixed(4)})`;
+    });
+    if (!reduced) this.observe(video, .5, vis => {
+      if (vis && !this.exUserPaused) video.play().catch(() => {});
+      else if (!vis && !video.paused) video.pause();
+    });
+  }
+
+  exToggle = () => {
+    const video = this.exVideoRef.current;
+    if (!video) return;
+    if (video.paused) { this.exUserPaused = false; video.play().catch(() => {}); }
+    else { this.exUserPaused = true; video.pause(); }
+  };
+
+  exSound = () => {
+    const video = this.exVideoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    if (!video.muted && video.paused) { this.exUserPaused = false; video.play().catch(() => {}); }
+  };
+
+  // "Watch with sound" starts the short over from the top with sound on.
+  exWatch = () => {
+    const video = this.exVideoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    video.muted = false;
+    this.exUserPaused = false;
+    video.play().catch(() => {});
+  };
+
+  // Phones can't install Phosphor, so they get a way to send the link to a computer.
+  shareLink = () => {
+    if (navigator.share) { navigator.share({ title: 'Phosphor', text: 'Your AI editing crew, on your own computer', url: SITE_URL }).catch(() => {}); return; }
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(SITE_URL).then(() => {
+      this.setState({ copied: true });
+      clearTimeout(this.copiedT); this.copiedT = setTimeout(() => this.setState({ copied: false }), 2500);
+    }).catch(() => {});
+  };
+
+  downloads(v) {
+    const d = v.dl;
+    const button = (b, bg, shadow) => (
+      <span data-magnetic="" style={css(`display:inline-flex`)}>
+        <a href={b.href} style={css(`display:inline-flex;flex-direction:column;justify-content:center;gap:6px;min-height:60px;padding:10px 22px;border:2px solid #3b2d43;border-radius:14px;background:${bg};box-shadow:${shadow};color:#3b2d43;text-decoration:none;transition:transform .15s,box-shadow .15s`)} className="btn-download">
+          <span style={css(`font:800 19px/1 'Baloo 2',sans-serif`)}>{b.title}</span>
+          <span style={css(`font:500 11px/1 'Fira Code',monospace;color:#4a3b54`)}>{b.sub}</span>
+        </a>
+      </span>
+    );
+    return (
+      <div style={css(`display:flex;flex-direction:column;gap:12px`)}>
+        <div style={css(`display:flex;flex-wrap:wrap;gap:14px`)}>
+          {button(d.mac, v.macBg, v.macShadow)}
+          {button(d.win, v.winBg, v.winShadow)}
+        </div>
+        <span style={css(`display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font:500 13px/1.5 'Fira Code',monospace;color:#2f6b5e;min-height:20px`)}>
+          {v.osNote}
+          {d.macOther && <a href={d.macOther.href} style={css(`color:#6f5a9a`)}>{d.macOther.label}</a>}
+          {v.showShare && <button type="button" onClick={v.share} style={css(`padding:6px 12px;border:2px solid #3b2d43;border-radius:10px;background:#fffdf8;box-shadow:2px 2px 0 #3b2d43;color:#3b2d43;font:700 15px/1 'Baloo 2',sans-serif;cursor:pointer`)}>{v.shareLabel}</button>}
+        </span>
+      </div>
+    );
   }
 
   setupHero() {
@@ -367,7 +480,32 @@ export default class App extends React.Component {
   renderVals() {
     const s = this.state;
     const primary = { bg: '#e7b86a', sh: '4px 4px 0 #3b2d43' }, secondary = { bg: '#fffdf8', sh: '2px 2px 0 #3b2d43' };
-    const mac = s.os === 'mac';
+    const mac = s.os === 'mac', win = s.os === 'windows';
+
+    // Download buttons: straight to the installer once a release is out, "coming soon" before the first one,
+    // and the Releases page until GitHub has answered (or if it can't be reached).
+    const rel = s.rel && typeof s.rel === 'object' ? s.rel : null, soon = s.rel === 'none';
+    const mb = n => `${Math.max(1, Math.round(n / 1048576))} MB`;
+    const macMain = rel && ((s.arch === 'x86' ? rel.macIntel : rel.mac) || rel.mac || rel.macIntel);
+    const macOther = rel && (macMain === rel.mac ? rel.macIntel : rel.mac);
+    const macKind = f => (f === rel.mac ? 'Apple silicon' : 'Intel');
+    const dl = {
+      mac: soon ? { href: RELEASES_REPO, title: 'Mac: coming soon', sub: 'Get notified on GitHub' }
+        : macMain ? { href: macMain.url, title: 'Download for Mac', sub: `${macKind(macMain)} · ${mb(macMain.size)}` }
+        : { href: RELEASES_PAGE, title: 'Download for Mac', sub: 'macOS 13 or later' },
+      win: soon ? { href: RELEASES_REPO, title: 'Windows: coming soon', sub: 'Get notified on GitHub' }
+        : rel && rel.win ? { href: rel.win.url, title: 'Download for Windows', sub: `64-bit · beta · ${mb(rel.win.size)}` }
+        : { href: RELEASES_PAGE, title: 'Download for Windows', sub: '64-bit · beta' },
+      macOther: macOther ? { href: macOther.url, label: `${macKind(macOther)} Mac? Get that version` } : null
+    };
+    const version = rel && rel.version ? ` Version ${rel.version}.` : '';
+    const osNote = soon ? 'The first release is almost here. On GitHub, pick Watch › Custom › Releases to hear when it’s out.'
+      : !s.osKnown ? ''
+      : s.os === 'mobile' ? 'Phosphor runs on Mac and Windows computers.'
+      : mac ? `Looks like you’re on a Mac.${version}`
+      : win ? `Looks like you’re on Windows.${version}`
+      : 'Phosphor runs on macOS and Windows.';
+    const canShare = typeof navigator !== 'undefined' && !!navigator.share;
 
     const PH = [
       { name: 'Brief', line: 'Say what you’re making in a sentence. It asks only the questions that matter.' },
@@ -469,8 +607,15 @@ export default class App extends React.Component {
       year: String(new Date().getFullYear()),
 
       macBg: mac ? primary.bg : secondary.bg, macShadow: mac ? primary.sh : secondary.sh,
-      winBg: mac ? secondary.bg : primary.bg, winShadow: mac ? secondary.sh : primary.sh,
-      osNote: s.osKnown ? (mac ? 'Looks like you’re on a Mac.' : 'Looks like you’re on Windows.') : '',
+      winBg: win ? primary.bg : secondary.bg, winShadow: win ? primary.sh : secondary.sh,
+      dl, osNote,
+      showShare: s.os === 'mobile', share: this.shareLink,
+      shareLabel: s.copied ? 'Link copied' : canShare ? 'Send yourself the link' : 'Copy the link',
+
+      exVideoRef: this.exVideoRef, exBarRef: this.exBarRef,
+      exToggle: this.exToggle, exSound: this.exSound, exWatch: this.exWatch,
+      exPlaying: s.exPlaying, exPlayOp: s.exPlaying ? 0 : 1, exMuted: s.exMuted, exSoundLabel: s.exMuted ? 'Sound on' : 'Mute',
+      faq: FAQ,
 
       phaseNodes: PH.map((p, i) => ({ num: String(i + 1), name: p.name, bg: i === s.phase ? '#e7b86a' : i < s.phase ? '#7fb7a8' : '#fffdf8', fg: i <= s.phase ? '#3b2d43' : '#5b4d66' })),
       // One illustration whose pieces move between phases; the number and heading roll, the copy slides.
@@ -527,9 +672,10 @@ export default class App extends React.Component {
             <span style={css(`font:800 26px/1 'Baloo 2',sans-serif;letter-spacing:-.02em;padding-top:3px`)}>Phosphor</span>
           </a>
           {v.wide && (<>
-            <div style={css(`display:flex;gap:22px;font:600 16px 'Baloo 2',sans-serif`)}>
+            <div className="nav-links" style={css(`display:flex;gap:22px;font:600 16px 'Baloo 2',sans-serif`)}>
               <a href="#how" style={css(`color:#5b4d66;text-decoration:none`)} className="nav-link">How it works</a>
               <a href="#watch" style={css(`color:#5b4d66;text-decoration:none`)} className="nav-link">Watch it work</a>
+              <a href="#example" style={css(`color:#5b4d66;text-decoration:none`)} className="nav-link">Example</a>
               <a href="#control" style={css(`color:#5b4d66;text-decoration:none`)} className="nav-link">Control</a>
               <a href="#private" style={css(`color:#5b4d66;text-decoration:none`)} className="nav-link">Private</a>
             </div>
@@ -558,17 +704,7 @@ export default class App extends React.Component {
             </div>
             <h1 id="hero-title" data-reveal="80" style={css(`margin:0;font:800 clamp(46px,7.2vw,88px)/.95 'Baloo 2',sans-serif;letter-spacing:-.03em;text-wrap:balance`)}>Your AI editing crew, on your own computer.</h1>
             <p data-reveal="160" style={css(`margin:0;font-size:clamp(18px,2vw,21px);line-height:1.5;color:#5b4d66;max-width:36ch;text-wrap:pretty`)}>Pick your footage and say in a sentence what you're making. Phosphor's agent turns it into a short you can watch, note and approve.</p>
-            <div data-reveal="240" style={css(`display:flex;flex-direction:column;gap:12px`)}>
-              <div style={css(`display:flex;flex-wrap:wrap;gap:14px`)}>
-                <span data-magnetic="" style={css(`display:inline-flex`)}>
-                  <a href="https://github.com/elebumm/phosphor-releases/releases/latest" style={css(`display:inline-flex;align-items:center;gap:10px;min-height:56px;padding:12px 24px;border:2px solid #3b2d43;border-radius:14px;background:${v.macBg};box-shadow:${v.macShadow};color:#3b2d43;text-decoration:none;font:800 19px/1 'Baloo 2',sans-serif;transition:transform .15s,box-shadow .15s`)} className="btn-download">Download for Mac</a>
-                </span>
-                <span data-magnetic="" style={css(`display:inline-flex`)}>
-                  <a href="https://github.com/elebumm/phosphor-releases/releases/latest" style={css(`display:inline-flex;align-items:center;gap:10px;min-height:56px;padding:12px 24px;border:2px solid #3b2d43;border-radius:14px;background:${v.winBg};box-shadow:${v.winShadow};color:#3b2d43;text-decoration:none;font:800 19px/1 'Baloo 2',sans-serif;transition:transform .15s,box-shadow .15s`)} className="btn-download">Download for Windows</a>
-                </span>
-              </div>
-              <span style={css(`font:500 13px 'Fira Code',monospace;color:#2f6b5e;min-height:18px`)}>{v.osNote}</span>
-            </div>
+            <div data-reveal="240">{this.downloads(v)}</div>
             <p data-reveal="320" style={css(`margin:0;font-size:14px;line-height:1.55;color:#5b4d66;max-width:56ch;padding-top:14px;border-top:2px dashed #b7a4d6`)}>macOS 13 or later (Apple silicon or Intel), or 64-bit Windows. You also need Python 3.11+, FFmpeg, and the Codex or Claude Code CLI. The app checks for these and tells you what's missing.</p>
           </div>
 
@@ -947,6 +1083,38 @@ export default class App extends React.Component {
         </div>
       </section>
 
+      <section id="example" aria-labelledby="example-title" style={css(`position:relative;overflow:hidden;border-bottom:2px solid #3b2d43;background:#3b2d43;color:#fffdf8`)}>
+        <span aria-hidden="true" style={css(`position:absolute;right:-12%;top:-30%;width:760px;height:760px;border-radius:50%;background:radial-gradient(closest-side,rgba(183,164,214,.3),transparent);pointer-events:none`)}></span>
+        <div style={css(`position:relative;max-width:1180px;margin:0 auto;padding:clamp(72px,10vw,120px) 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:clamp(40px,6vw,72px);align-items:center`)}>
+          <div data-reveal="0" style={css(`display:flex;flex-direction:column;gap:18px`)}>
+            <div style={css(`display:flex;align-items:center;gap:10px;font:500 13px 'Fira Code',monospace;color:#dcd2ee`)}>
+              <span style={css(`display:flex;gap:5px`)}><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#b7a4d6;border:1.5px solid #3b2d43`)}></span><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#7fb7a8;border:1.5px solid #3b2d43`)}></span><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#e7b86a;border:1.5px solid #3b2d43`)}></span><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#a3405c;border:1.5px solid #3b2d43`)}></span></span>
+              <span>Made with Phosphor</span>
+            </div>
+            <h2 id="example-title" style={css(`margin:0;font:800 clamp(34px,5vw,58px)/1 'Baloo 2',sans-serif;letter-spacing:-.025em;text-wrap:balance`)}>A real short, made with Phosphor</h2>
+            <p style={css(`margin:0;font-size:19px;line-height:1.5;color:#dcd2ee;max-width:38ch;text-wrap:pretty`)}>Sloppenheimer is a 73-second short made with Phosphor: talking head, captions, motion graphics and b-roll, delivered at 1080 × 1920.</p>
+            <span style={css(`font:500 13px 'Fira Code',monospace;color:#b7a4d6`)}>1:13 · 1080 × 1920 · 23.976 fps</span>
+            <div>
+              <button type="button" onClick={v.exWatch} className="btn-ex" style={css(`display:inline-flex;align-items:center;gap:10px;min-height:52px;padding:10px 22px;border:2px solid #fffdf8;border-radius:14px;background:#e7b86a;box-shadow:4px 4px 0 #fffdf8;color:#3b2d43;font:800 18px/1 'Baloo 2',sans-serif;cursor:pointer;transition:transform .15s,box-shadow .15s`)}>
+                <span aria-hidden="true" style={css(`width:0;height:0;border-left:11px solid #3b2d43;border-top:7px solid transparent;border-bottom:7px solid transparent`)}></span>Watch with sound
+              </button>
+            </div>
+          </div>
+          <div data-reveal="100" style={css(`display:flex;justify-content:center`)}>
+            <div style={css(`position:relative;width:min(300px,76vw);aspect-ratio:9/16;border-radius:24px;overflow:hidden;background:#1f1724;border:3px solid #fffdf8;box-shadow:0 0 0 3px #3b2d43,0 0 70px rgba(183,164,214,.45)`)}>
+              <video ref={v.exVideoRef} src="media/sloppenheimer.mp4" poster="media/sloppenheimer-poster.jpg" muted loop playsInline preload="none" aria-label="Sloppenheimer, a short made with Phosphor" onClick={v.exToggle} style={css(`display:block;width:100%;height:100%;object-fit:cover;cursor:pointer`)}></video>
+              <button type="button" onClick={v.exToggle} aria-label={v.exPlaying ? 'Pause' : 'Play'} className="ex-play" style={css(`position:absolute;left:50%;top:50%;width:68px;height:68px;margin:-34px 0 0 -34px;display:grid;place-items:center;border:3px solid #3b2d43;border-radius:50%;background:#fffdf8;box-shadow:3px 3px 0 #3b2d43;cursor:pointer;opacity:${v.exPlayOp};pointer-events:${v.exPlaying ? 'none' : 'auto'};transition:opacity .25s`)}>
+                <span aria-hidden="true" style={css(`margin-left:5px;width:0;height:0;border-left:20px solid #3b2d43;border-top:12px solid transparent;border-bottom:12px solid transparent`)}></span>
+              </button>
+              <button type="button" onClick={v.exSound} aria-pressed={!v.exMuted} style={css(`position:absolute;left:12px;bottom:16px;display:inline-flex;align-items:center;gap:7px;padding:6px 12px 6px 10px;border:2px solid #3b2d43;border-radius:999px;background:#fffdf8;box-shadow:2px 2px 0 #3b2d43;color:#3b2d43;font:700 14px/1 'Baloo 2',sans-serif;cursor:pointer`)}>
+                <svg width="15" height="12" viewBox="0 0 15 12" aria-hidden="true"><path d="M1 4h2.5L7 1v10L3.5 8H1z" fill="#3b2d43"></path>{v.exMuted ? <path d="M9.5 4l3.5 4m0-4L9.5 8" stroke="#3b2d43" strokeWidth="1.6" strokeLinecap="round"></path> : <path d="M9.5 3.5q2 2.5 0 5M11.8 1.8q3.4 4.2 0 8.4" fill="none" stroke="#3b2d43" strokeWidth="1.5" strokeLinecap="round"></path>}</svg>{v.exSoundLabel}
+              </button>
+              <span aria-hidden="true" style={css(`position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,253,248,.25)`)}><span ref={v.exBarRef} style={css(`position:absolute;inset:0;background:#e7b86a;transform-origin:0 50%;transform:scaleX(0);transition:transform .25s linear`)}></span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="control" ref={v.controlRef} aria-labelledby="control-title" style={css(`border-bottom:2px solid #3b2d43;background:#efe7d9`)}>
         <div style={css(`max-width:1180px;margin:0 auto;padding:clamp(72px,10vw,120px) 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:clamp(40px,6vw,72px);align-items:center`)}>
           <div data-reveal="0" style={css(`display:flex;flex-direction:column;gap:20px;padding:clamp(20px,3vw,32px);background:#fffdf8;border:2px solid #3b2d43;border-radius:20px;box-shadow:6px 6px 0 #3b2d43`)}>
@@ -1003,7 +1171,7 @@ export default class App extends React.Component {
                 <div style={css(`display:flex;flex-wrap:wrap;gap:6px`)}>
                   <span style={css(`padding:2px 10px;border:2px solid #3b2d43;border-radius:999px;background:#dcd2ee;font-size:14px`)}>DaVinci Resolve</span>
                   <span style={css(`padding:2px 10px;border:2px solid #3b2d43;border-radius:999px;background:#dcd2ee;font-size:14px`)}>After Effects</span>
-                  <span style={css(`padding:2px 10px;border:2px solid #3b2d43;border-radius:999px;background:#dcd2ee;font-size:14px`)}>Premiere</span>
+                  <span style={css(`padding:2px 10px;border:2px dashed #6f5a9a;border-radius:999px;color:#5b4d66;font-size:14px`)}>Premiere · soon</span>
                 </div>
               </div>
               <div style={css(`padding:16px 18px;border:2px solid #3b2d43;border-radius:16px;background:#fffdf8;box-shadow:3px 3px 0 #3b2d43;display:flex;flex-direction:column;gap:8px`)}>
@@ -1108,6 +1276,32 @@ export default class App extends React.Component {
         </div>
       </section>
 
+      <section id="faq" aria-labelledby="faq-title" style={css(`border-bottom:2px solid #3b2d43;background:#f4efe6`)}>
+        <div style={css(`max-width:1180px;margin:0 auto;padding:clamp(72px,10vw,120px) 24px;display:flex;flex-wrap:wrap;gap:clamp(32px,5vw,64px);align-items:flex-start`)}>
+          <div data-reveal="0" style={css(`flex:1 1 280px;display:flex;flex-direction:column;gap:14px`)}>
+            <div style={css(`display:flex;align-items:center;gap:10px;font:500 13px 'Fira Code',monospace;color:#5b4d66`)}>
+              <span style={css(`display:flex;gap:5px`)}><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#b7a4d6;border:1.5px solid #3b2d43`)}></span><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#7fb7a8;border:1.5px solid #3b2d43`)}></span><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#e7b86a;border:1.5px solid #3b2d43`)}></span><span data-pulse="" style={css(`width:9px;height:9px;border-radius:2px;background:#a3405c;border:1.5px solid #3b2d43`)}></span></span>
+              <span>Questions</span>
+            </div>
+            <h2 id="faq-title" style={css(`margin:0;font:800 clamp(34px,5vw,58px)/1 'Baloo 2',sans-serif;letter-spacing:-.025em`)}>Good to know</h2>
+          </div>
+          <div data-reveal="80" style={css(`flex:2 1 460px;display:flex;flex-direction:column;gap:12px;min-width:0`)}>
+            {v.faq.map(f => (
+              <details key={f.q} className="faq" style={css(`border:2px solid #3b2d43;border-radius:14px;background:#fffdf8;box-shadow:3px 3px 0 #3b2d43`)}>
+                <summary style={css(`display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px 16px 20px;cursor:pointer;font:800 19px/1.25 'Baloo 2',sans-serif;color:#3b2d43`)}>
+                  {f.q}
+                  <span aria-hidden="true" className="faq-icon" style={css(`position:relative;flex:none;width:24px;height:24px;border:2px solid #3b2d43;border-radius:7px;background:#e7b86a`)}>
+                    <span style={css(`position:absolute;left:4px;right:4px;top:50%;height:2px;margin-top:-1px;background:#3b2d43`)}></span>
+                    <span style={css(`position:absolute;top:4px;bottom:4px;left:50%;width:2px;margin-left:-1px;background:#3b2d43`)}></span>
+                  </span>
+                </summary>
+                <p style={css(`margin:0;padding:0 20px 18px;font-size:17px;line-height:1.55;color:#5b4d66;max-width:62ch`)}>{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="get-started" ref={v.checkRef} aria-labelledby="start-title" style={css(`position:relative;overflow:hidden;background:#f4efe6`)}>
         <span aria-hidden="true" style={css(`position:absolute;left:50%;top:0;width:900px;height:600px;margin-left:-450px;border-radius:50%;background:radial-gradient(closest-side,rgba(183,164,214,.4),transparent);pointer-events:none`)}></span>
         <div style={css(`position:relative;max-width:1180px;margin:0 auto;padding:clamp(72px,10vw,120px) 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:clamp(40px,6vw,72px);align-items:center`)}>
@@ -1120,17 +1314,18 @@ export default class App extends React.Component {
               <h2 id="start-title" style={css(`margin:0;font:800 clamp(40px,6vw,72px)/1 'Baloo 2',sans-serif;letter-spacing:-.03em`)}>Get started</h2>
               <p style={css(`margin:0;font-size:19px;line-height:1.5;color:#5b4d66`)}>Install it, open it, and it checks your setup for you.</p>
             </div>
-            <div data-reveal="80" style={css(`display:flex;flex-wrap:wrap;gap:14px`)}>
-              <span data-magnetic="" style={css(`display:inline-flex`)}>
-                <a href="https://github.com/elebumm/phosphor-releases/releases/latest" style={css(`display:inline-flex;align-items:center;min-height:56px;padding:12px 24px;border:2px solid #3b2d43;border-radius:14px;background:${v.macBg};box-shadow:${v.macShadow};color:#3b2d43;text-decoration:none;font:800 19px/1 'Baloo 2',sans-serif;transition:transform .15s,box-shadow .15s`)} className="btn-download">Download for Mac</a>
-              </span>
-              <span data-magnetic="" style={css(`display:inline-flex`)}>
-                <a href="https://github.com/elebumm/phosphor-releases/releases/latest" style={css(`display:inline-flex;align-items:center;min-height:56px;padding:12px 24px;border:2px solid #3b2d43;border-radius:14px;background:${v.winBg};box-shadow:${v.winShadow};color:#3b2d43;text-decoration:none;font:800 19px/1 'Baloo 2',sans-serif;transition:transform .15s,box-shadow .15s`)} className="btn-download">Download for Windows</a>
-              </span>
-            </div>
+            <div data-reveal="80">{this.downloads(v)}</div>
             <div data-reveal="140" style={css(`display:flex;align-items:center;gap:10px;font:500 14px 'Fira Code',monospace;color:#2f6b5e`)}>
-              <span style={css(`width:10px;height:10px;border-radius:50%;background:#7fb7a8;border:2px solid #3b2d43`)}></span>Updates itself once installed
+              <span style={css(`width:10px;height:10px;border-radius:50%;background:#7fb7a8;border:2px solid #3b2d43`)}></span>Checks for updates on its own
             </div>
+            <details data-reveal="180" className="first-launch" style={css(`max-width:54ch;font-size:15px;line-height:1.5;color:#5b4d66`)}>
+              <summary style={css(`cursor:pointer;font:700 16px 'Baloo 2',sans-serif;color:#3b2d43`)}>Seeing a security warning the first time you open it?</summary>
+              <div style={css(`display:flex;flex-direction:column;gap:8px;padding-top:10px`)}>
+                <p style={css(`margin:0`)}><strong>Mac:</strong> open System Settings, go to Privacy &amp; Security, and click <strong>Open Anyway</strong> next to the message about Phosphor.</p>
+                <p style={css(`margin:0`)}><strong>Windows:</strong> if SmartScreen stops the installer, click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+                <p style={css(`margin:0`)}>You only need to do this once.</p>
+              </div>
+            </details>
           </div>
           <div data-reveal="100" style={css(`padding:clamp(20px,3vw,32px);background:#fffdf8;border:2px solid #3b2d43;border-radius:20px;box-shadow:6px 6px 0 #3b2d43;display:flex;flex-direction:column;gap:18px`)}>
             <span style={css(`font:800 22px 'Baloo 2',sans-serif`)}>What you need</span>
@@ -1160,7 +1355,7 @@ export default class App extends React.Component {
             </span>
             <span style={css(`font:800 26px/1 'Baloo 2',sans-serif;padding-top:3px`)}>Phosphor</span>
           </div>
-          <a href="https://github.com/elebumm/phosphor-releases/releases/latest" style={css(`color:#dcd2ee;font:700 16px 'Baloo 2',sans-serif`)} className="footer-link">Releases on GitHub</a>
+          <a href="https://github.com/elebumm/phosphor-releases/releases" style={css(`color:#dcd2ee;font:700 16px 'Baloo 2',sans-serif`)} className="footer-link">Releases on GitHub</a>
           <span style={css(`margin-left:auto;font:400 13px 'Fira Code',monospace;color:#dcd2ee`)}>© {v.year} Phosphor</span>
         </div>
       </footer>
