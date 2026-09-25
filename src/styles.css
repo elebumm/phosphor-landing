@@ -1,0 +1,17 @@
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: #f4efe6; color: #3b2d43; font-family: 'Atkinson Hyperlegible', sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+* { box-sizing: border-box; }
+a { color: #6f5a9a; }
+a:hover { color: #3b2d43; }
+:focus-visible { outline: 3px solid #6f5a9a; outline-offset: 4px; border-radius: 6px; }
+::selection { background: #dcd2ee; }
+
+/* Hover/active/focus states. Elements carry their base styles inline, so these need !important. */
+.skip-link:focus { left: 12px !important; }
+.nav-link:hover { color: #3b2d43 !important; }
+.nav-cta:hover { transform: translate(-1px, -1px) !important; box-shadow: 3px 3px 0 #3b2d43 !important; color: #3b2d43 !important; }
+.btn-download:hover { transform: translate(-2px, -2px) !important; box-shadow: 5px 5px 0 #3b2d43 !important; color: #3b2d43 !important; }
+.btn-stop:hover { transform: translate(-2px, -2px) !important; box-shadow: 7px 7px 0 #3b2d43 !important; }
+.btn-stop:active { transform: translate(3px, 3px) !important; box-shadow: 2px 2px 0 #3b2d43 !important; }
+.footer-link:hover { color: #fffdf8 !important; }
