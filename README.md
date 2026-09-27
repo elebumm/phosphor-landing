@@ -41,6 +41,8 @@ All records are DNS-only (grey cloud). GitHub issues and renews the HTTPS certif
 - `public/icon.png`: favicon and Apple touch icon.
 - `public/og.png`: the link-preview image (see below).
 - `public/media/`: the example short and its poster.
+- `public/404.html`: the page GitHub Pages shows for missing paths. It's standalone, so its links are absolute.
+- `public/robots.txt` and `public/sitemap.xml`: for search engines.
 
 ## Download buttons
 
